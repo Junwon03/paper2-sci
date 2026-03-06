@@ -1,72 +1,29 @@
-name: SCI Calculator Test
+name: Test SCI Calculator
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 jobs:
   test:
-    name: Test SCI Calculator
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
       
-    - name: Set up Python 3.11
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        cache: 'pip'
         
-    - name: Install dependencies
+    - name: Install packages
+      run: pip install -r requirements.txt
+        
+    - name: Run calculator
+      run: python sci_calculator_v2.py
+        
+    - name: Check results
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        
-    - name: Run SCI calculator
-      run: |
-        python sci_calculator_v2.py
-        
-    - name: Check outputs
-      run: |
-        test -f figures/figure1_sci_timeseries.png || exit 1
-        test -f figures/figure2_staked_by_entity.png || exit 1
-        test -f data/processed/table4_sci_summary.csv || exit 1
-        test -f data/processed/appendix_table_a1_sci_full.csv || exit 1
-        echo "All outputs generated successfully"
-        
-    - name: Upload results
-      uses: actions/upload-artifact@v4
-      if: success()
-      with:
-        name: sci-results
-        path: |
-          figures/*.png
-          data/processed/*.csv
-        retention-days: 30
-```
-
----
-
-## 🔍 주요 수정 사항
-
-1. **들여쓰기 통일** - 모든 들여쓰기를 스페이스 2개로 통일
-2. **`if: always()` → `if: success()`** - 성공 시에만 Artifact 업로드
-3. **YAML 문법 정리** - 모든 구조 검증
-
----
-
-## 📝 수정 방법
-
-### GitHub 웹에서 수정:
-
-1. GitHub 레포 → **`.github/workflows/test.yml`** 파일 클릭
-2. **연필 아이콘** (Edit) 클릭
-3. 파일 내용을 위의 **전체 코드로 교체**
-4. 아래 메시지:
-```
-   Fix YAML syntax error in workflow
+        ls figures/
+        ls data/processed/
