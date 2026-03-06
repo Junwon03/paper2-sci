@@ -1,0 +1,123 @@
+name: SCI Calculator Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test SCI Calculator
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run SCI calculator
+      run: |
+        python sci_calculator_v2.py
+        
+    - name: Check outputs
+      run: |
+        test -f figures/figure1_sci_timeseries.png || exit 1
+        test -f figures/figure2_staked_by_entity.png || exit 1
+        test -f data/processed/table4_sci_summary.csv || exit 1
+        test -f data/processed/appendix_table_a1_sci_full.csv || exit 1
+        echo "✅ All outputs generated successfully"
+        
+    - name: Upload figures
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: sci-results
+        path: |
+          figures/*.png
+          data/processed/*.csv
+        retention-days: 30
+```
+
+---
+
+## 🚀 GitHub에 올리는 순서
+
+### 1단계: .gitignore 추가
+
+**GitHub 웹**:
+1. **"Add file" → "Create new file"**
+2. **파일명**: `.gitignore`
+3. 위의 `.gitignore` 내용 **전체 복사**
+4. **"Commit new file"** 클릭
+
+### 2단계: GitHub Actions 추가 (선택)
+
+**GitHub 웹**:
+1. **"Add file" → "Create new file"**
+2. **파일명**: `.github/workflows/test.yml` (슬래시 포함!)
+3. 위의 `test.yml` 내용 **전체 복사**
+4. **"Commit new file"** 클릭
+
+---
+
+## 📋 완성된 GitHub 레포 구조
+```
+paper2-sci/
+│
+├── .gitignore                          ← Git 무시 파일
+├── .github/
+│   └── workflows/
+│       └── test.yml                    ← 자동 테스트 (선택)
+│
+├── README.md                           ← 설명서
+├── requirements.txt                    ← 패키지
+├── sci_calculator_v2.py               ← 메인 코드
+│
+└── data/
+    └── raw/
+        └── staking_data.csv           ← 샘플 데이터
+```
+
+---
+
+## 🧪 GitHub Actions 작동 확인
+
+코드를 Push하면 자동으로:
+
+1. ✅ Python 3.11 설치
+2. ✅ 패키지 설치 (`pip install -r requirements.txt`)
+3. ✅ SCI 계산 실행 (`python sci_calculator_v2.py`)
+4. ✅ Figure 1, 2 생성 확인
+5. ✅ Table 4, Appendix A1 생성 확인
+6. ✅ 결과를 Artifact로 다운로드 가능
+
+**결과 확인**:
+- GitHub 레포 → **Actions** 탭 → 초록 체크마크 ✅
+
+---
+
+## 💡 간단 버전 (최소 구성)
+
+최소한만 필요하면:
+
+### .gitignore (간단 버전)
+```
+__pycache__/
+*.pyc
+.Python
+venv/
+.vscode/
+.DS_Store
+*.ipynb
