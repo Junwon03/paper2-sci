@@ -27,3 +27,34 @@ jobs:
       run: |
         ls figures/
         ls data/processed/
+        
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: sci-results
+        path: |
+          figures/
+          data/processed/
+        retention-days: 30
+```
+
+---
+
+## 📥 결과 다운로드 방법
+
+### GitHub Actions에서:
+
+1. **Actions** 탭 클릭
+2. 최신 workflow 클릭 (초록 체크마크)
+3. 페이지 하단 **"Artifacts"** 섹션 확인
+4. **"sci-results"** 클릭하여 ZIP 다운로드
+5. 압축 해제하면:
+```
+   sci-results/
+   ├── figures/
+   │   ├── figure1_sci_timeseries.png
+   │   └── figure2_staked_by_entity.png
+   └── data/processed/
+       ├── table4_sci_summary.csv
+       ├── appendix_table_a1_sci_full.csv
+       └── sci_raw_results.csv
