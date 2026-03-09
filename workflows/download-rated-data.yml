@@ -1,0 +1,132 @@
+name: Download Rated.network Data
+
+on:
+  workflow_dispatch:  # 수동 실행
+  schedule:
+    - cron: '0 0 * * 0'  # 매주 일요일 자동 실행 (선택사항)
+
+jobs:
+  download-and-analyze:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        pip install requests pandas numpy matplotlib
+        
+    - name: Download Rated data
+      env:
+        RATED_API_KEY: ${{ secrets.RATED_API_KEY }}
+      run: |
+        python << 'EOF'
+        import requests
+        import pandas as pd
+        from datetime import datetime
+        import os
+        
+        # API Token (GitHub Secrets에서)
+        API_KEY = os.environ['RATED_API_KEY']
+        BASE_URL = "https://api.rated.network/v1/eth"
+        
+        print("=" * 60)
+        print("Rated.network 데이터 다운로드")
+        print("=" * 60)
+        
+        # Headers
+        headers = {
+            'Authorization': f'Bearer {API_KEY}',
+            'X-Rated-Network': 'mainnet'
+        }
+        
+        # Parameters
+        params = {
+            'entityType': 'pool',
+            'window': 'all',
+            'limit': 1000,
+            'sortBy': 'validatorCount',
+            'sortOrder': 'desc'
+        }
+        
+        url = f"{BASE_URL}/entities/summaries"
+        
+        print(f"\n📡 API 호출 중...")
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if 'data' in data:
+                entities = data['data']
+                print(f"✅ 성공! {len(entities)} entities")
+                
+                # DataFrame 생성
+                df = pd.DataFrame(entities)
+                
+                # 데이터 정리
+                result = pd.DataFrame({
+                    'date': datetime.now().strftime('%Y-%m-%d'),
+                    'entity': df['id'],
+                    'staked_eth': df['validatorCount'] * 32
+                })
+                
+                result = result.sort_values('staked_eth', ascending=False)
+                
+                # 미리보기
+                print(f"\n📊 Top 10:")
+                print(result.head(10).to_string(index=False))
+                
+                # 저장
+                os.makedirs('data/raw', exist_ok=True)
+                result.to_csv('data/raw/staking_data.csv', index=False)
+                
+                print(f"\n💾 저장 완료: data/raw/staking_data.csv")
+                print(f"   Entities: {len(result)}")
+                print(f"   Total ETH: {result['staked_eth'].sum():,.0f}")
+                
+            else:
+                print("❌ 예상과 다른 응답")
+                print(data)
+                exit(1)
+                
+        except Exception as e:
+            print(f"❌ 에러: {e}")
+            exit(1)
+        EOF
+        
+    - name: Run SCI Calculator
+      run: |
+        python sci_calculator_v2.py
+        
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: sci-results
+        path: |
+          figures/*.png
+          data/processed/*.csv
+        retention-days: 90
+        
+    - name: Commit data (optional)
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add data/raw/staking_data.csv
+        git add data/processed/*.csv
+        git add figures/*.png
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update staking data - $(date +'%Y-%m-%d')"
+        
+    - name: Push changes (optional)
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: main
