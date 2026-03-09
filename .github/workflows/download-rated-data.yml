@@ -1,4 +1,4 @@
-name: Download Rated Data and Run SCI
+name: Download Dune Data and Run SCI
 
 on:
   workflow_dispatch:
@@ -18,103 +18,129 @@ jobs:
         
     - name: Install dependencies
       run: |
-        pip install requests pandas numpy matplotlib
+        pip install requests pandas numpy matplotlib dune-client
         
-    - name: Download Rated.network data
+    - name: Download Dune data
       env:
-        RATED_API_KEY: ${{ secrets.RATED_API_KEY }}
+        DUNE_API_KEY: ${{ secrets.DUNE_API_KEY }}
       run: |
         python << 'EOF'
-        import requests
+        import os
         import pandas as pd
         from datetime import datetime
-        import os
+        from dune_client.client import DuneClient
+        from dune_client.query import QueryBase
         
         print("=" * 60)
-        print("Rated.network API 데이터 다운로드")
+        print("Dune Analytics 데이터 다운로드")
         print("=" * 60)
         
-        API_KEY = os.environ.get('RATED_API_KEY')
+        API_KEY = os.environ.get('DUNE_API_KEY')
         
         if not API_KEY:
-            print("❌ RATED_API_KEY 없음!")
+            print("❌ DUNE_API_KEY 없음!")
             exit(1)
         
-        print(f"✅ API Key 확인됨")
+        print("✅ API Key 확인됨")
         
-        BASE_URL = "https://api.rated.network/v1/eth"
+        # Dune Client 초기화
+        dune = DuneClient(API_KEY)
         
-        headers = {
-            'Authorization': f'Bearer {API_KEY}',
-            'X-Rated-Network': 'mainnet'
-        }
+        # Query ID (hildobby's ETH Staking query)
+        # 여러 후보 query - 하나씩 시도
+        query_candidates = [
+            1193962,  # hildobby - ETH Staking Entities
+            2509608,  # Alternative query
+            3391489,  # Another option
+        ]
         
-        params = {
-            'entityType': 'pool',
-            'window': 'all',
-            'limit': 1000,
-            'sortBy': 'validatorCount',
-            'sortOrder': 'desc'
-        }
+        data = None
         
-        url = f"{BASE_URL}/entities/summaries"
+        for query_id in query_candidates:
+            try:
+                print(f"\n📡 Query {query_id} 시도 중...")
+                
+                # Query 실행
+                query = QueryBase(query_id=query_id)
+                results = dune.run_query(query)
+                
+                # 결과 확인
+                if results and hasattr(results, 'result') and results.result:
+                    rows = results.result.rows
+                    
+                    if rows:
+                        print(f"✅ 성공! {len(rows)} rows")
+                        data = rows
+                        break
+                    else:
+                        print(f"⚠️  Query {query_id}: 데이터 없음")
+                else:
+                    print(f"⚠️  Query {query_id}: 결과 없음")
+                    
+            except Exception as e:
+                print(f"❌ Query {query_id} 실패: {e}")
+                continue
         
-        print(f"\n📡 API 호출: {url}")
-        
-        try:
-            response = requests.get(url, headers=headers, params=params, timeout=30)
-            
-            print(f"📥 Response Status: {response.status_code}")
-            
-            response.raise_for_status()
-            
-            data = response.json()
-            
-            # 'results' 키 사용 (Rated API v1)
-            if 'results' in data:
-                entities = data['results']
-                print(f"\n✅ 성공! {len(entities)} entities")
-                
-                df = pd.DataFrame(entities)
-                
-                print(f"📋 받은 컬럼: {df.columns.tolist()}")
-                
-                # 데이터 정리
-                result = pd.DataFrame({
-                    'date': datetime.now().strftime('%Y-%m-%d'),
-                    'entity': df['id'],
-                    'staked_eth': df['validatorCount'] * 32
-                })
-                
-                result = result.sort_values('staked_eth', ascending=False)
-                
-                print(f"\n📊 Entity Top 20:")
-                print(result.head(20).to_string(index=False))
-                
-                print(f"\n📈 통계:")
-                print(f"   Total Entities: {len(result)}")
-                print(f"   Total Staked ETH: {result['staked_eth'].sum():,.0f}")
-                
-                # 저장
-                os.makedirs('data/raw', exist_ok=True)
-                result.to_csv('data/raw/staking_data.csv', index=False)
-                
-                print(f"\n💾 저장: data/raw/staking_data.csv")
-                
-                # 검증
-                saved = pd.read_csv('data/raw/staking_data.csv')
-                print(f"✅ 검증: {len(saved)} rows 저장됨")
-                
-            else:
-                print(f"\n❌ 'results' 키 없음")
-                print(f"   Keys: {data.keys()}")
-                exit(1)
-                
-        except Exception as e:
-            print(f"\n❌ 에러: {e}")
-            import traceback
-            traceback.print_exc()
+        if not data:
+            print("\n❌ 모든 query 실패!")
+            print("\n대안: Dune Premium으로 CSV 직접 다운로드 필요")
             exit(1)
+        
+        # DataFrame 생성
+        df = pd.DataFrame(data)
+        
+        print(f"\n📋 받은 컬럼: {df.columns.tolist()}")
+        print(f"\n🔍 데이터 샘플:")
+        print(df.head())
+        
+        # 컬럼 매핑 (query마다 다를 수 있음)
+        # 가능한 컬럼명들 시도
+        date_col = None
+        entity_col = None
+        staked_col = None
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'date' in col_lower or 'time' in col_lower or 'day' in col_lower:
+                date_col = col
+            if 'entity' in col_lower or 'pool' in col_lower or 'name' in col_lower:
+                entity_col = col
+            if 'stake' in col_lower or 'eth' in col_lower or 'amount' in col_lower:
+                staked_col = col
+        
+        if not all([date_col, entity_col, staked_col]):
+            print(f"\n⚠️  컬럼 자동 매핑 실패")
+            print(f"   date: {date_col}")
+            print(f"   entity: {entity_col}")
+            print(f"   staked: {staked_col}")
+            print(f"\n수동 확인 필요 - CSV 직접 다운로드 권장")
+            exit(1)
+        
+        # 데이터 정리
+        result = pd.DataFrame({
+            'date': pd.to_datetime(df[date_col]).dt.strftime('%Y-%m-%d'),
+            'entity': df[entity_col],
+            'staked_eth': df[staked_col]
+        })
+        
+        # 정렬
+        result = result.sort_values(['date', 'staked_eth'], ascending=[True, False])
+        
+        # 통계
+        print(f"\n📊 데이터 요약:")
+        print(f"   기간: {result['date'].min()} ~ {result['date'].max()}")
+        print(f"   Entities: {result['entity'].nunique()}")
+        print(f"   Total rows: {len(result)}")
+        
+        print(f"\n📊 최신 Top 10:")
+        latest = result[result['date'] == result['date'].max()]
+        print(latest.head(10).to_string(index=False))
+        
+        # 저장
+        os.makedirs('data/raw', exist_ok=True)
+        result.to_csv('data/raw/staking_data.csv', index=False)
+        
+        print(f"\n💾 저장: data/raw/staking_data.csv")
         
         EOF
         
@@ -123,7 +149,7 @@ jobs:
         echo "=== CSV 확인 ==="
         head -20 data/raw/staking_data.csv
         echo ""
-        echo "=== Entity 개수 ==="
+        echo "=== 데이터 통계 ==="
         tail -n +2 data/raw/staking_data.csv | wc -l
         
     - name: Run SCI Calculator
